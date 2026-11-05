@@ -26,6 +26,9 @@ public class ApiAccessFilter extends OncePerRequestFilter {
 
     private final ConcurrentHashMap<String, RequestWindow> requestWindows = new ConcurrentHashMap<>();
 
+    @Value("${app.cors.allowed-origins:http://localhost:5173}")
+    private String[] allowedOrigins;
+
     @Value("${app.api-token:}")
     private String apiToken;
 
@@ -42,7 +45,7 @@ public class ApiAccessFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         if (apiToken == null || apiToken.isBlank()) {
-            writeError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+            writeError(request, response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     "API access is not configured");
             return;
         }
@@ -54,7 +57,7 @@ public class ApiAccessFilter extends OncePerRequestFilter {
         if (!MessageDigest.isEqual(
                 apiToken.getBytes(StandardCharsets.UTF_8),
                 suppliedToken.getBytes(StandardCharsets.UTF_8))) {
-            writeError(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+            writeError(request, response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
             return;
         }
 
@@ -81,14 +84,29 @@ public class ApiAccessFilter extends OncePerRequestFilter {
         }
         if (limited.get()) {
             response.setHeader("Retry-After", "60");
-            writeError(response, 429, "Too many requests");
+            writeError(request, response, 429, "Too many requests");
             return;
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private static void writeError(HttpServletResponse response, int status, String message) throws IOException {
+    private void writeError(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            int status,
+            String message
+    ) throws IOException {
+        String origin = request.getHeader("Origin");
+        if (origin != null) {
+            for (String allowedOrigin : allowedOrigins) {
+                if (origin.equals(allowedOrigin.trim())) {
+                    response.setHeader("Access-Control-Allow-Origin", origin);
+                    response.addHeader("Vary", "Origin");
+                    break;
+                }
+            }
+        }
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json");
