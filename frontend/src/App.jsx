@@ -8,16 +8,38 @@ import { useEffect, useRef, useState } from 'react'
    ============================================================ */
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
 const API_URL = `${API_BASE_URL}/api/ai/ask`
+const API_TOKEN_REQUIRED = import.meta.env.DEV || Boolean(API_BASE_URL)
+const API_TOKEN_KEY = 'uzex-api-token'
 const TIMEOUT_MS = 90_000
 const MAX_TABLE_ROWS = 50
 
-async function askServer(question, signal) {
+async function askServer(question, signal, lang) {
+  let token = ''
+  if (API_TOKEN_REQUIRED) {
+    try { token = sessionStorage.getItem(API_TOKEN_KEY) || '' } catch { /* ignore */ }
+    if (!token) {
+      token = window.prompt(lang === 'uz' ? 'API tokenini kiriting:' : 'Введите токен доступа к API:') || ''
+      if (token) {
+        try { sessionStorage.setItem(API_TOKEN_KEY, token) } catch { /* ignore */ }
+      }
+    }
+    if (!token) {
+      throw new Error('API_AUTH_REQUIRED')
+    }
+  }
+
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) headers.Authorization = `Bearer ${token}`
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ question }),
     signal,
   })
+  if (res.status === 401) {
+    try { sessionStorage.removeItem(API_TOKEN_KEY) } catch { /* ignore */ }
+    throw new Error('API_AUTH_INVALID')
+  }
   if (!res.ok) throw new Error('HTTP ' + res.status)
   const data = await res.json()
   return {
@@ -51,6 +73,7 @@ const T = {
       network: 'Не удалось получить ответ от сервера. Проверьте соединение и повторите запрос.',
       timeout: 'Ответ занял больше 90 секунд. Попробуйте задать вопрос короче.',
       stopped: 'Запрос остановлен.',
+      auth: 'Не задан токен доступа к API или он неверен. Повторите запрос и введите правильный токен.',
     },
     note: 'Все данные в реестре вымышленные. Проверяйте важные цифры по основанию ответа.',
     examples: [
@@ -80,6 +103,7 @@ const T = {
       network: 'Serverdan javob olib bo‘lmadi. Ulanishni tekshirib, so‘rovni takrorlang.',
       timeout: 'Javob 90 soniyadan oshdi. Savolni qisqaroq qilib bering.',
       stopped: 'So‘rov to‘xtatildi.',
+      auth: 'API kirish tokeni kiritilmagan yoki noto‘g‘ri. So‘rovni takrorlab, to‘g‘ri tokenni kiriting.',
     },
     note: 'Reyestrdagi barcha maʼlumotlar o‘ylab topilgan. Muhim raqamlarni javob asosidan tekshiring.',
     examples: [
@@ -284,10 +308,12 @@ export default function App() {
     setLoading(true)
 
     try {
-      const r = await askServer(q, ctrl.signal)
+      const r = await askServer(q, ctrl.signal, lang)
       add({ role: 'assistant', ...r })
     } catch (e) {
-      const kind = e.name === 'AbortError' ? (timedOut ? 'timeout' : 'stopped') : 'network'
+      const kind = e.name === 'AbortError'
+        ? (timedOut ? 'timeout' : 'stopped')
+        : e.message === 'API_AUTH_REQUIRED' || e.message === 'API_AUTH_INVALID' ? 'auth' : 'network'
       add({ role: 'assistant', error: kind, retry: q })
     } finally {
       clearTimeout(timer)
