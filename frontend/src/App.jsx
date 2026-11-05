@@ -8,38 +8,16 @@ import { useEffect, useRef, useState } from 'react'
    ============================================================ */
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
 const API_URL = `${API_BASE_URL}/api/ai/ask`
-const API_TOKEN_REQUIRED = import.meta.env.DEV || Boolean(API_BASE_URL)
-const API_TOKEN_KEY = 'uzex-api-token'
 const TIMEOUT_MS = 90_000
 const MAX_TABLE_ROWS = 50
 
 async function askServer(question, signal, lang) {
-  let token = ''
-  if (API_TOKEN_REQUIRED) {
-    try { token = sessionStorage.getItem(API_TOKEN_KEY) || '' } catch { /* ignore */ }
-    if (!token) {
-      token = window.prompt(lang === 'uz' ? 'API tokenini kiriting:' : 'Введите токен доступа к API:') || ''
-      if (token) {
-        try { sessionStorage.setItem(API_TOKEN_KEY, token) } catch { /* ignore */ }
-      }
-    }
-    if (!token) {
-      throw new Error('API_AUTH_REQUIRED')
-    }
-  }
-
-  const headers = { 'Content-Type': 'application/json' }
-  if (token) headers.Authorization = `Bearer ${token}`
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
     signal,
   })
-  if (res.status === 401) {
-    try { sessionStorage.removeItem(API_TOKEN_KEY) } catch { /* ignore */ }
-    throw new Error('API_AUTH_INVALID')
-  }
   if (!res.ok) throw new Error('HTTP ' + res.status)
   const data = await res.json()
   return {
@@ -313,7 +291,7 @@ export default function App() {
     } catch (e) {
       const kind = e.name === 'AbortError'
         ? (timedOut ? 'timeout' : 'stopped')
-        : e.message === 'API_AUTH_REQUIRED' || e.message === 'API_AUTH_INVALID' ? 'auth' : 'network'
+        : 'network'
       add({ role: 'assistant', error: kind, retry: q })
     } finally {
       clearTimeout(timer)

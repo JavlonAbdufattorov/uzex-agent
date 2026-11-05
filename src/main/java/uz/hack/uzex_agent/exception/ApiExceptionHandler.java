@@ -26,4 +26,18 @@ public class ApiExceptionHandler {
                         "details", exception.getResponseBodyAsString()
                 ));
     }
-}   
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalState(
+            IllegalStateException exception
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of(
+                        "timestamp", Instant.now().toString(),
+                        "status", 503,
+                        "error", "Gemini not configured",
+                        "message", exception.getMessage()
+                ));
+    }
+}

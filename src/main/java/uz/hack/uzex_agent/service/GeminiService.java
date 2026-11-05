@@ -25,8 +25,8 @@ public class GeminiService {
     private final String model;
 
     public GeminiService(
-            @Value("${gemini.api-key}") String apiKey,
-            @Value("${gemini.model}") String model,
+            @Value("${gemini.api-key:}") String apiKey,
+            @Value("${gemini.model:gemini-3.1-flash-lite}") String model,
             AnalyticsService analyticsService,
             ObjectMapper objectMapper
     ) {
@@ -236,6 +236,11 @@ Map.of(
 );
 
     public String ask(String question) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "GEMINI_API_KEY is not configured. Set it before calling /api/ai/ask."
+            );
+        }
 
         Map<String, Object> request = new HashMap<>();
 
